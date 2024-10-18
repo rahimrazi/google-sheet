@@ -7,7 +7,7 @@ function App() {
   const [sheetData, setSheetData] = useState({});
 
   useEffect(() => {
-    const eventSource = new EventSource('/api/webhook');
+    const eventSource = new EventSource('https://google-sheet-teal.vercel.app/api/webhook');
 
     eventSource.onmessage = (event) => {
       try {
