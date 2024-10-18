@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 
 function App() {
   const [sheetData, setSheetData] = useState({});
+  console.log(sheetData,"sheet data")
 
   useEffect(() => {
     const eventSource = new EventSource('/api/webhook');
