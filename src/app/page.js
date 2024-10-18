@@ -5,40 +5,23 @@ import { useEffect, useState } from 'react';
 
 function App() {
   const [sheetData, setSheetData] = useState({});
-  console.log(sheetData,"sheet data")
 
   useEffect(() => {
-    const eventSource = new EventSource('/api/webhook');
-    eventSource.onopen = () => {
-      console.log('Connection to server opened.');
-    };
-    eventSource.onmessage = (event) => {
+    const fetchData = async () => {
       try {
-        const data = JSON.parse(event.data);
-        console.log('New data received:', data);
-        setSheetData(prevData => ({
-          ...prevData,
-          [data.sheetName]: {
-            ...(prevData[data.sheetName] || {}),
-            [data.row]: {
-              ...(prevData[data.sheetName]?.[data.row] || {}),
-              [data.col]: data.value
-            }
-          }
-        }));
+        const response = await fetch('/api/webhook');
+        const data = await response.json();
+        setSheetData(data);
       } catch (error) {
-        console.error('Error parsing SSE data:', error);
+        console.error('Error fetching data:', error);
       }
     };
 
-    eventSource.onerror = (error) => {
-      console.error('SSE error:', error);
-      eventSource.close();
-    };
+    // Fetch data immediately and then every 5 seconds
+    fetchData();
+    const interval = setInterval(fetchData, 5000);
 
-    return () => {
-      eventSource.close();
-    };
+    return () => clearInterval(interval);
   }, []);
 
   return (

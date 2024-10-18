@@ -1,15 +1,18 @@
 //src/app/api/webhook/route.js
 import { NextResponse } from 'next/server';
+import NodeCache from 'node-cache';
 
-let clients = new Set();
+// Initialize the cache
+const cache = new NodeCache({ stdTTL: 100, checkperiod: 120 });
 
 export async function POST(request) {
   try {
     const body = await request.json();
     console.log("Webhook received:", body);
 
-    // Send the data to all connected clients
-    clients.forEach(client => client.write(`data: ${JSON.stringify(body)}\n\n`));
+    // Store the data in cache
+    const cacheKey = `${body.sheetName}-${body.row}-${body.col}`;
+    cache.set(cacheKey, body);
 
     return NextResponse.json({ message: "Webhook received" }, { status: 200 });
   } catch (error) {
@@ -19,46 +22,25 @@ export async function POST(request) {
 }
 
 export async function GET() {
-  const encoder = new TextEncoder();
+  try {
+    // Retrieve all cached data
+    const allData = cache.mget(cache.keys());
+    
+    // Transform the data into the structure expected by the client
+    const sheetData = Object.values(allData).reduce((acc, item) => {
+      if (!acc[item.sheetName]) {
+        acc[item.sheetName] = {};
+      }
+      if (!acc[item.sheetName][item.row]) {
+        acc[item.sheetName][item.row] = {};
+      }
+      acc[item.sheetName][item.row][item.col] = item.value;
+      return acc;
+    }, {});
 
-  // Create a new readable stream for the client
-  const stream = new ReadableStream({
-    start(controller) {
-      const newClient = {
-        id: Date.now(),
-        write(data) {
-          controller.enqueue(encoder.encode(data));
-        },
-      };
-
-      // Add the new client to the set of clients
-      clients.add(newClient);
-      console.log(`Client connected. Total clients: ${clients.size}`);
-
-      // Cleanup on client disconnect
-      const cleanup = () => {
-        clients.delete(newClient);
-        console.log(`Client disconnected. Total clients: ${clients.size}`);
-        controller.close(); // Close the stream if necessary
-      };
-
-      // Listen for the stream cancellation to clean up the client
-      this.cancel = cleanup;
-    },
-    cancel() {
-      // Clear all clients when the stream is canceled
-      clients.clear();
-      console.log("Stream cancelled. All clients disconnected.");
-    },
-  });
-
-  // Return the response with SSE headers
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*', // Allow CORS if necessary
-    },
-  });
+    return NextResponse.json(sheetData);
+  } catch (error) {
+    console.error("Error retrieving cached data:", error);
+    return NextResponse.json({ message: "Error retrieving data" }, { status: 500 });
+  }
 }
