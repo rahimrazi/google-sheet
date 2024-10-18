@@ -1,20 +1,35 @@
-'use client';
-
+// src/app/page.js
+"use client"
 import { useEffect, useState } from 'react';
 
-export default function Home() {
-  const [sheetData, setSheetData] = useState([]);
+function App() {
+  const [sheetData, setSheetData] = useState({});
 
   useEffect(() => {
-    // Open SSE connection to the Next.js API route
     const eventSource = new EventSource('/api/webhook');
 
     eventSource.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      console.log('Received update from Google Sheets:', data);
+      try {
+        const data = JSON.parse(event.data);
+        console.log('New data received:', data);
+        setSheetData(prevData => ({
+          ...prevData,
+          [data.sheetName]: {
+            ...(prevData[data.sheetName] || {}),
+            [data.row]: {
+              ...(prevData[data.sheetName]?.[data.row] || {}),
+              [data.col]: data.value
+            }
+          }
+        }));
+      } catch (error) {
+        console.error('Error parsing SSE data:', error);
+      }
+    };
 
-      // Update the sheet data with real-time updates
-      setSheetData((prevData) => [...prevData, ...data.values]);
+    eventSource.onerror = (error) => {
+      console.error('SSE error:', error);
+      eventSource.close();
     };
 
     return () => {
@@ -25,17 +40,24 @@ export default function Home() {
   return (
     <div>
       <h1>Google Sheet Data</h1>
-      <table border="1">
-        <tbody>
-          {sheetData.map((row, rowIndex) => (
-            <tr key={rowIndex}>
-              {row.map((cell, cellIndex) => (
-                <td key={cellIndex}>{cell}</td>
+      {Object.entries(sheetData).map(([sheetName, sheetContent]) => (
+        <div key={sheetName}>
+          <h2>{sheetName}</h2>
+          <table border="1">
+            <tbody>
+              {Object.entries(sheetContent).map(([row, rowContent]) => (
+                <tr key={row}>
+                  {Object.entries(rowContent).map(([col, value]) => (
+                    <td key={`${row}-${col}`}>{value}</td>
+                  ))}
+                </tr>
               ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+            </tbody>
+          </table>
+        </div>
+      ))}
     </div>
   );
 }
+
+export default App;

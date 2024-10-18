@@ -1,0 +1,25 @@
+function atEdit(e) {
+  try {
+    const sheet = e.source.getActiveSheet();
+    const range = e.range;
+    const rowData = sheet.getRange(range.getRow(), 1, 1, sheet.getLastColumn()).getValues()[0];
+
+    const data = {
+      row: range.getRow(),
+      data: rowData,
+    };
+
+    const options = {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(data),
+    };
+
+    const webhookUrl = 'https://5d5b-117-207-28-164.ngrok-free.app/api/webhook'; // Use your ngrok URL
+    const response = UrlFetchApp.fetch(webhookUrl, options);
+    Logger.log("Response from webhook: " + response.getContentText());
+
+  } catch (error) {
+    Logger.log("Error in onEdit: " + error.message);
+  }
+}
