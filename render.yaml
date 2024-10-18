@@ -1,8 +1,8 @@
 services:
   - type: web
-    name: my-app                # Change this to your desired service name
-    env: node                   # Use 'node' if you're deploying a Node.js app
-    buildCommand: npm install    # Command to install dependencies
-    startCommand: npm run start       # Command to start your application
-    autoDeploy: true             # Automatically deploy on push
-    branch: main                 # Specify the branch to deploy from
+    name: my-nextjs-app               # Change this to your desired service name
+    env: node                         # Environment type
+    buildCommand: npm run build        # Command to build your Next.js app
+    startCommand: npm run start        # Command to start your Next.js app
+    autoDeploy: true                   # Automatically deploy on push
+    branch: main                       # Specify the branch to deploy from
