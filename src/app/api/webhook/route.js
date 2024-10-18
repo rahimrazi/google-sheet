@@ -2,17 +2,31 @@
 import { NextResponse } from 'next/server';
 import NodeCache from 'node-cache';
 
-// Initialize the cache
-const cache = new NodeCache({ stdTTL: 100, checkperiod: 120 });
+const cache = new NodeCache();
+let clients = new Set();
 
 export async function POST(request) {
   try {
     const body = await request.json();
     console.log("Webhook received:", body);
 
-    // Store the data in cache
-    const cacheKey = `${body.sheetName}-${body.row}-${body.col}`;
-    cache.set(cacheKey, body);
+    // Update the cache with the new data
+    let currentData = cache.get('sheetData') || {};
+    currentData = {
+      ...currentData,
+      [body.sheetName]: {
+        ...(currentData[body.sheetName] || {}),
+        [body.row]: {
+          ...(currentData[body.sheetName]?.[body.row] || {}),
+          [body.col]: body.value
+        }
+      }
+    };
+    cache.set('sheetData', currentData);
+
+    // Send the update to all connected clients
+    const update = JSON.stringify({ type: 'update', data: body });
+    clients.forEach(client => client.write(`data: ${update}\n\n`));
 
     return NextResponse.json({ message: "Webhook received" }, { status: 200 });
   } catch (error) {
@@ -22,25 +36,35 @@ export async function POST(request) {
 }
 
 export async function GET() {
-  try {
-    // Retrieve all cached data
-    const allData = cache.mget(cache.keys());
-    
-    // Transform the data into the structure expected by the client
-    const sheetData = Object.values(allData).reduce((acc, item) => {
-      if (!acc[item.sheetName]) {
-        acc[item.sheetName] = {};
-      }
-      if (!acc[item.sheetName][item.row]) {
-        acc[item.sheetName][item.row] = {};
-      }
-      acc[item.sheetName][item.row][item.col] = item.value;
-      return acc;
-    }, {});
+  const stream = new ReadableStream({
+    start(controller) {
+      const newClient = {
+        id: Date.now(),
+        write(data) {
+          controller.enqueue(data);
+        },
+      };
 
-    return NextResponse.json(sheetData);
-  } catch (error) {
-    console.error("Error retrieving cached data:", error);
-    return NextResponse.json({ message: "Error retrieving data" }, { status: 500 });
-  }
+      clients.add(newClient);
+
+      // Send the current data to the new client
+      const currentData = cache.get('sheetData') || {};
+      newClient.write(`data: ${JSON.stringify({ type: 'initial', data: currentData })}\n\n`);
+
+      return () => {
+        clients.delete(newClient);
+      };
+    },
+    cancel() {
+      clients.delete(this);
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  });
 }

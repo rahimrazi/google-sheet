@@ -1,5 +1,6 @@
 //src/app/page.js
 
+
 "use client"
 import { useEffect, useState } from 'react';
 
@@ -7,21 +8,35 @@ function App() {
   const [sheetData, setSheetData] = useState({});
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const response = await fetch('/api/webhook');
-        const data = await response.json();
+    const eventSource = new EventSource('/api/webhook');
+
+    eventSource.onmessage = (event) => {
+      const { type, data } = JSON.parse(event.data);
+      
+      if (type === 'initial') {
         setSheetData(data);
-      } catch (error) {
-        console.error('Error fetching data:', error);
+      } else if (type === 'update') {
+        setSheetData(prevData => ({
+          ...prevData,
+          [data.sheetName]: {
+            ...(prevData[data.sheetName] || {}),
+            [data.row]: {
+              ...(prevData[data.sheetName]?.[data.row] || {}),
+              [data.col]: data.value
+            }
+          }
+        }));
       }
     };
 
-    // Fetch data immediately and then every 5 seconds
-    fetchData();
-    const interval = setInterval(fetchData, 5000);
+    eventSource.onerror = (error) => {
+      console.error('SSE error:', error);
+      eventSource.close();
+    };
 
-    return () => clearInterval(interval);
+    return () => {
+      eventSource.close();
+    };
   }, []);
 
   return (
