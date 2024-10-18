@@ -23,3 +23,122 @@ function atEdit(e) {
     Logger.log("Error in onEdit: " + error.message);
   }
 }
+
+
+//page.js
+// src/app/page.js
+"use client"
+import { useEffect, useState } from 'react';
+
+function App() {
+  const [sheetData, setSheetData] = useState({});
+
+  useEffect(() => {
+    const eventSource = new EventSource('/api/webhook');
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        console.log('New data received:', data);
+        setSheetData(prevData => ({
+          ...prevData,
+          [data.sheetName]: {
+            ...(prevData[data.sheetName] || {}),
+            [data.row]: {
+              ...(prevData[data.sheetName]?.[data.row] || {}),
+              [data.col]: data.value
+            }
+          }
+        }));
+      } catch (error) {
+        console.error('Error parsing SSE data:', error);
+      }
+    };
+
+    eventSource.onerror = (error) => {
+      console.error('SSE error:', error);
+      eventSource.close();
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, []);
+
+  return (
+    <div>
+      <h1>Google Sheet Data</h1>
+      {Object.entries(sheetData).map(([sheetName, sheetContent]) => (
+        <div key={sheetName}>
+          <h2>{sheetName}</h2>
+          <table border="1">
+            <tbody>
+              {Object.entries(sheetContent).map(([row, rowContent]) => (
+                <tr key={row}>
+                  {Object.entries(rowContent).map(([col, value]) => (
+                    <td key={`${row}-${col}`}>{value}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export default App;
+
+ //api code
+import { NextResponse } from 'next/server';
+
+let clients = new Set();
+
+export async function POST(request) {
+  try {
+    const body = await request.json();
+    console.log("Webhook received:", body);
+    clients.forEach(client => client.write(`data: ${JSON.stringify(body)}\n\n`));
+    return NextResponse.json({ message: "Webhook received" }, { status: 200 });
+  } catch (error) {
+    console.error("Error processing webhook:", error);
+    return NextResponse.json({ message: "Error processing webhook" }, { status: 500 });
+  }
+}
+
+export async function GET() {
+  const encoder = new TextEncoder();
+
+  const stream = new ReadableStream({
+    start(controller) {
+      const newClient = {
+        id: Date.now(),
+        write(data) {
+          controller.enqueue(encoder.encode(data));
+        }
+      };
+
+      clients.add(newClient);
+
+      console.log(`Client connected. Total clients: ${clients.size}`);
+
+      return () => {
+        clients.delete(newClient);
+        console.log(`Client disconnected. Total clients: ${clients.size}`);
+      };
+    },
+    cancel() {
+      clients.clear();
+      console.log("Stream cancelled. All clients disconnected.");
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  });
+}
